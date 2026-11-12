@@ -1038,9 +1038,10 @@ PY
     echo "Failed to extract pristine source for the patchset diff"; exit 1;
   }
   mkdir -p "$PATCHSET_DIR"
+  PATCH_TARGET="$(cd "$EXTRACT_DIR" && pwd)"
   (
     cd "$PATCH_PARENT" &&
-    diff -ruN "${EXTRACT_DIR}" "${OLDPWD}/${EXTRACT_DIR}" > "${OLDPWD}/${PATCHSET_FILE}"
+    diff -ruN "${EXTRACT_DIR}" "$PATCH_TARGET" > "$PATCHSET_FILE"
   )
   # diff exits 1 when differences exist, which is the expected case here.
   if [ -s "$PATCHSET_FILE" ]; then
