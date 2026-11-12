@@ -34,6 +34,8 @@ WXWIDGETS_VERSION="3.3.4" # https://wxwidgets.org/downloads/
 # Note: FFS 14.6+ uses GTK3 with native dark mode support
 
 # Build library path for caching compiled dependencies (relative to script location)
+# Static suffix: libssh2 and curl are built as static archives so the final
+# FreeFileSync binary is self-contained and runs on stock Raspberry Pi OS.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Prevent simultaneous builds from modifying the same working directory/cache.
@@ -63,6 +65,8 @@ if [ -z "$1" ]; then
   echo "  $0 https://freefilesync.org/download/FreeFileSync_14.6_Source.zip"
   echo ""
   echo "Default behavior:"
+  echo "  - Downloads the official prebuilt GitHub release when available"
+  echo "    (aarch64 + Debian 13+); otherwise compiles from source"
   echo "  - Uses cached dependencies if available (build-library/)"
   echo "  - Installs binary to /usr/local/bin with desktop entry"
   echo "  - Cleans up temporary build files (keeps cache)"
@@ -70,15 +74,17 @@ if [ -z "$1" ]; then
   echo "Options:"
   echo "  --no-install     Skip system installation"
   echo "  --keep-temp      Keep temporary build files (extracted sources, downloads)"
+  echo "  --no-prebuilt    Ignore prebuilt GitHub releases, always compile"
   echo ""
   echo "Note: To rebuild a component, delete it from build-library/"
-  echo "      e.g., rm -rf build-library/curl/8.17.0"
+  echo "      e.g., rm -rf build-library/aarch64-debian-13/curl/8.17.0-static"
   exit 1
 fi
 
 INPUT="$1"
 INSTALL_SYSTEM=true   # Default: Install to system
 CLEANUP_TEMP=true     # Default: Clean up temp files, keep cache
+PREBUILT_ENABLED=true # Default: use prebuilt GitHub release when available
 
 # Detect if input is a version number or URL
 if [[ "$INPUT" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
@@ -169,6 +175,10 @@ while [[ $# -gt 0 ]]; do
       CLEANUP_TEMP=false
       shift
       ;;
+    --no-prebuilt)
+      PREBUILT_ENABLED=false
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
       exit 1
@@ -251,6 +261,7 @@ sudo apt-get install -y \
   libssl-dev \
   libpsl-dev \
   libidn2-dev \
+  zlib1g-dev \
   build-essential \
   wget \
   unzip \
@@ -265,8 +276,8 @@ DEPS_FILE="${FFS_CACHE_DIR}/.deps"
 # Increase CACHE_FORMAT when cache layout/build assumptions change.
 # Increase PATCHSET_REVISION whenever one of the FreeFileSync source patches
 # below is added, removed, or materially changed.
-CACHE_FORMAT="3"
-PATCHSET_REVISION="14.13-rpi-compat-3"
+CACHE_FORMAT="4"
+PATCHSET_REVISION="14.13-rpi-compat-4"
 
 CURRENT_DEPS="cacheFormat=${CACHE_FORMAT},patchset=${PATCHSET_REVISION},arch=${ARCH},os=${OS_CACHE_ID},libssh2=${LIBSSH2_VERSION},curl=${CURL_VERSION},wxWidgets=${WXWIDGETS_VERSION}"
 
@@ -284,6 +295,56 @@ fi
 CACHED_BINARY="${FFS_CACHE_DIR}/bin/${BINARY_NAME}"
 CACHED_RESOURCES="${FFS_CACHE_DIR}/Resources"
 SKIP_BUILD=false
+
+## Optional fast path: official prebuilt build from GitHub Releases.
+# Supported only on aarch64 with Debian 13 or newer (the release binaries are
+# built in a debian:13 container). Anything else, or a version without a
+# published release, falls back to compiling from source.
+if [ "$PREBUILT_ENABLED" = true ] && [ "$SKIP_BUILD" = false ]; then
+  PREBUILT_COMPATIBLE="$(
+    . /etc/os-release
+    if [ "$ARCH" = "aarch64" ] && [ "${ID:-}" = "debian" ] && [ "${VERSION_ID:-0}" -ge 13 ] 2>/dev/null; then
+      echo yes
+    else
+      echo no
+    fi
+  )"
+
+  if [ "$PREBUILT_COMPATIBLE" = yes ]; then
+    PREBUILT_URL="https://github.com/Bro-Account/freefilesync-rpi/releases/download/v${VERSION}/FreeFileSync-${VERSION}-linux-aarch64.tar.gz"
+    PREBUILT_TARBALL="${WORKING_DIR}/FreeFileSync-${VERSION}-prebuilt.tar.gz"
+
+    echo "Checking for prebuilt FreeFileSync ${VERSION} on GitHub Releases..."
+    if wget --spider -q "$PREBUILT_URL"; then
+      echo "  Found: downloading prebuilt build (no compilation needed)..."
+      if wget --https-only --timeout=30 --tries=3 \
+         --output-document="$PREBUILT_TARBALL" "$PREBUILT_URL" \
+         && tar tzf "$PREBUILT_TARBALL" >/dev/null 2>&1; then
+
+        PREBUILT_TMP="${WORKING_DIR}/prebuilt-${VERSION}"
+        rm -rf "$PREBUILT_TMP"
+        mkdir -p "$PREBUILT_TMP"
+        tar xzf "$PREBUILT_TARBALL" -C "$PREBUILT_TMP"
+
+        # Store it in the same layout a fresh build would have produced,
+        # so the rest of the script (cache check, installation) just works.
+        rm -rf "$FFS_CACHE_DIR"
+        mkdir -p "${FFS_CACHE_DIR}/bin"
+        mv "${PREBUILT_TMP}/FreeFileSync_aarch64" "${FFS_CACHE_DIR}/bin/"
+        mv "${PREBUILT_TMP}/Resources" "${FFS_CACHE_DIR}/Resources"
+        echo "$CURRENT_DEPS" > "$DEPS_FILE"
+        rm -rf "$PREBUILT_TMP" "$PREBUILT_TARBALL"
+
+        echo "  ✓ Prebuilt build stored in ${FFS_CACHE_DIR}"
+      else
+        echo "  ⚠ Download failed - falling back to building from source"
+      fi
+    else
+      echo "  No prebuilt release for ${VERSION} - will build from source"
+    fi
+    echo ""
+  fi
+fi
 
 # Check if we have a complete cached build with matching dependencies
 if [ -f "$CACHED_BINARY" ] && [ -d "$CACHED_RESOURCES" ] && [ -f "$DEPS_FILE" ]; then
@@ -326,7 +387,7 @@ echo "=========================================="
 echo "Step 1/4: libssh2 ${LIBSSH2_VERSION}"
 echo "=========================================="
 
-LIBSSH2_CACHE_DIR="${BUILD_LIBRARY}/libssh2/${LIBSSH2_VERSION}"
+LIBSSH2_CACHE_DIR="${BUILD_LIBRARY}/libssh2/${LIBSSH2_VERSION}-static"
 LIBSSH2_DIR="libssh2-${LIBSSH2_VERSION}"
 
 # Check if we have a cached version
@@ -388,7 +449,9 @@ else
   cd "$LIBSSH2_DIR" || exit 1
   mkdir -p build
   cd build || exit 1
-  ../configure || { echo "libssh2 configure failed"; exit 1; }
+  # Static only: FreeFileSync then links libssh2 from the archive and does
+  # not depend on a specific libssh2 runtime version being installed.
+  ../configure --disable-shared || { echo "libssh2 configure failed"; exit 1; }
   make -j${MAKE_JOBS} || { echo "libssh2 build failed"; exit 1; }
   sudo make install || { echo "libssh2 install failed"; exit 1; }
   
@@ -444,27 +507,16 @@ PKGEOF"
   echo "✓ Cached in ${LIBSSH2_CACHE_DIR}"
 fi
 
-# libtool/curl need the unversioned development linker name libssh2.so.
-# The cached copy may contain only libssh2.so.1.0.1, so recreate the
-# required symlinks from the actual installed versioned library.
-LIBSSH2_REAL_LIBRARY=$(find /usr/local/lib -maxdepth 1 -type f -name 'libssh2.so.*' -printf '%f\n' | sort -V | tail -n 1)
-
-if [ -z "$LIBSSH2_REAL_LIBRARY" ]; then
-  echo "Error: libssh2 shared library was not found in /usr/local/lib"
-  echo "Expected a file such as /usr/local/lib/libssh2.so.1.0.1"
+# libssh2 is built with --disable-shared, so curl and FreeFileSync link
+# against the static archive and no ldconfig symlinks or runtime library
+# are needed for it.
+if [ ! -f /usr/local/lib/libssh2.a ]; then
+  echo "Error: static libssh2 archive was not found in /usr/local/lib"
+  echo "Expected /usr/local/lib/libssh2.a (built with --disable-shared)"
   exit 1
 fi
 
-sudo ln -sfn "$LIBSSH2_REAL_LIBRARY" /usr/local/lib/libssh2.so
-sudo ln -sfn "$LIBSSH2_REAL_LIBRARY" /usr/local/lib/libssh2.so.1
-sudo ldconfig
-
-if [ ! -e /usr/local/lib/libssh2.so ]; then
-  echo "Error: failed to create /usr/local/lib/libssh2.so"
-  exit 1
-fi
-
-echo "✓ libssh2 linker library available: /usr/local/lib/libssh2.so -> $(readlink /usr/local/lib/libssh2.so)"
+echo "✓ Static libssh2 archive available: /usr/local/lib/libssh2.a"
 
 cd "$WORKING_DIR" || exit 1
 
@@ -474,7 +526,7 @@ echo "=========================================="
 echo "Step 2/4: libcurl ${CURL_VERSION}"
 echo "=========================================="
 
-CURL_CACHE_DIR="${BUILD_LIBRARY}/curl/${CURL_VERSION}"
+CURL_CACHE_DIR="${BUILD_LIBRARY}/curl/${CURL_VERSION}-static"
 CURL_DIR="curl-${CURL_VERSION}"
 
 # Check if we have a cached version
@@ -528,7 +580,10 @@ else
   cd "$CURL_DIR" || exit 1
   mkdir -p build
   cd build || exit 1
+  # Static only: see the libssh2 note above — the final FreeFileSync binary
+  # carries curl (and its dependency chain) inside.
   ../configure \
+  --disable-shared \
   --with-openssl \
   --with-libssh2=/usr/local \
   --enable-versioned-symbols || {
@@ -784,13 +839,13 @@ PY
   fi
   echo "  - Removed warn_static.h include (file doesn't exist in 14.6+)"
   
-  # Fix libssh2 linking (pkg-config file doesn't exist, add library manually)
-  # Replace the LDFLAGS line to include -lssh2
+  # curl and libssh2 are static archives now, so the linker needs the full
+  # dependency chain appended after -lcurl: libssh2, OpenSSL, libpsl,
+  # libidn2, zlib (all standard Debian dev packages installed above).
   if grep -q "^LDFLAGS.*pkg-config.*libcurl" "$MAKEFILE"; then
-    # Add -lssh2 to LDFLAGS if not already there
     if ! grep -q "\-lssh2" "$MAKEFILE"; then
-      sed -i '/^LDFLAGS.*pkg-config.*libcurl/s/$/ -lssh2/' "$MAKEFILE"
-      echo "  - Added -lssh2 to LDFLAGS for proper linking"
+      sed -i '/^LDFLAGS.*pkg-config.*libcurl/s/$/ -lssh2 -lssl -lcrypto -lpsl -lidn2 -lz/' "$MAKEFILE"
+      echo "  - Added -lssh2 -lssl -lcrypto -lpsl -lidn2 -lz to LDFLAGS (static linking)"
     fi
   fi
 else

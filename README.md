@@ -30,11 +30,19 @@ compatibility patches.
 
 ## Usage
 
+On Raspberry Pi OS / Debian 13+ (aarch64) the script first checks whether an
+official prebuilt build of the requested version exists on this repository's
+[Releases](../../releases) page. If yes, it downloads and stores it in the
+local cache in seconds — no compilation. If not (or on other systems/OS
+versions), it falls back to building from source. Either way the script
+installs everything needed and sets up `/opt/freefilesync` with a
+`freefilesync` symlink in `/usr/local/bin` and a desktop entry.
+
 ```sh
-./build-freefilesync.sh 14.13     # build & install
-./build-freefilesync.sh https://freefilesync.org/download/FreeFileSync_14.13_Source.zip
-./build-freefilesync.sh 14.13 --no-install   # build & cache only
-./build-freefilesync.sh 14.13 --keep-temp    # keep extracted sources
+./build-freefilesync.sh 14.13               # install prebuilt (or build from source)
+./build-freefilesync.sh 14.13 --no-prebuilt # force a local source build
+./build-freefilesync.sh 14.13 --no-install  # fetch/build into the cache only
+./build-freefilesync.sh <URL>               # build from a direct download link
 ```
 
 The script installs its build dependencies via `apt`, compiles libssh2 →
@@ -48,8 +56,15 @@ builds reuse the cached dependencies and finish much faster.
 
 This repository builds FreeFileSync automatically for **Raspberry Pi OS /
 Debian 13 (aarch64)** via GitHub Actions (Debian 13 container on an ARM64
-runner). Finished portable builds are attached to the matching
-[Releases](../../releases) page:
+runner), and the script consumes these builds directly:
+`./build-freefilesync.sh <version>` downloads the matching release, seeds the
+local cache, and installs it with the usual desktop-entry setup.
+
+The released binary links **libssh2 and curl statically** (and wxWidgets was
+already static), so it runs on a stock Raspberry Pi OS installation — only
+standard Debian runtime packages are needed (gtk3, libssl, libpsl, libidn2,
+libjpeg), which the script installs automatically. Hand-installation of a
+release tarball:
 
 ```sh
 sudo mkdir -p /opt/freefilesync

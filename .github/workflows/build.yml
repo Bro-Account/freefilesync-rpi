@@ -97,7 +97,7 @@ jobs:
           restore-keys: ffs-build-
 
       - name: Build FreeFileSync ${{ env.VERSION }}
-        run: ./build-freefilesync.sh "${VERSION}" --no-install
+        run: ./build-freefilesync.sh "${VERSION}" --no-install --no-prebuilt
 
       - name: Package build
         run: |
