@@ -60,8 +60,10 @@ sudo ln -sf /opt/freefilesync/FreeFileSync_aarch64 /usr/local/bin/freefilesync
 
 ## How CI builds work
 
-- Trigger: push a tag `v<version>` (e.g. `v14.13`) or run the workflow
-  manually from the *Actions* tab.
+- Trigger: push a tag `v<version>` (e.g. `v14.13`), run the workflow manually
+  from the *Actions* tab (leaving the version empty auto-detects the latest
+  upstream release), or wait for the **daily scheduled check**, which builds
+  and publishes every new upstream FreeFileSync release automatically.
 - The workflow runs `./build-freefilesync.sh <version> --no-install` inside a
   `debian:13` container, so binaries match Raspberry Pi OS Trixie.
 - `build-library/` is cached between runs via `actions/cache` (keyed on the
