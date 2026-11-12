@@ -133,7 +133,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            ca-certificates xvfb imagemagick fonts-dejavu-core \
+            ca-certificates xvfb xauth imagemagick fonts-dejavu-core \
             libgtk-3-0t64 libssl3t64 libpsl5t64 libidn2-0 libjpeg62-turbo
 
       - uses: actions/checkout@v7
