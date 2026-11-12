@@ -1,4 +1,4 @@
-name: Build FreeFileSync (Debian 13, aarch64)
+name: Build, test & publish FreeFileSync (Debian 13, aarch64)
 
 on:
   workflow_dispatch:
@@ -111,30 +111,90 @@ jobs:
             --transform 's|^bin/||' \
             -C "$CACHE_DIR" bin Resources
 
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: FreeFileSync-${{ env.VERSION }}-linux-aarch64
+          path: FreeFileSync-${{ env.VERSION }}-linux-aarch64.tar.gz
+
+  smoke-test:
+    name: Smoke test on clean Debian 13
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: debian:13
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+
+    steps:
+      # Deliberately ONLY runtime packages (no -dev packages, no build
+      # tools): this container models a stock Raspberry Pi OS system.
+      - name: Install runtime & test packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates xvfb imagemagick fonts-dejavu-core \
+            libgtk-3-0t64 libssl3t64 libpsl5t64 libidn2-0 libjpeg62-turbo
+
+      - uses: actions/checkout@v7
+
+      - name: Download built tarball
+        uses: actions/download-artifact@v8
+        with:
+          name: FreeFileSync-${{ env.VERSION }}-linux-aarch64
+          path: dist
+          merge-multiple: true
+
+      - name: Smoke test (launch on clean system)
+        run: bash tests/smoke-test.sh "dist/FreeFileSync-${VERSION}-linux-aarch64.tar.gz"
+
+      - name: Upload smoke-test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ffs-smoke-${{ env.VERSION }}
+          path: |
+            /tmp/ffs-smoke.png
+            /tmp/ffs-stderr.log
+            /tmp/ffs-stdout.log
+          if-no-files-found: ignore
+
+  publish:
+    name: Publish release
+    needs: [version, build, smoke-test]
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    runs-on: ubuntu-24.04-arm
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+
+    steps:
+      - name: Download built tarball
+        uses: actions/download-artifact@v8
+        with:
+          name: FreeFileSync-${{ env.VERSION }}-linux-aarch64
+          path: dist
+          merge-multiple: true
+
       - name: Attach to GitHub Release (tag & automatic builds)
-        if: github.event_name == 'push' || github.event_name == 'schedule'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ env.VERSION }}
-          files: FreeFileSync-${{ env.VERSION }}-linux-aarch64.tar.gz
+          files: dist/FreeFileSync-${{ env.VERSION }}-linux-aarch64.tar.gz
           body: |
             Prebuilt [FreeFileSync](https://freefilesync.org) ${{ env.VERSION }}
-            for Raspberry Pi OS / Debian 13 (aarch64), built automatically from
-            upstream source in GitHub Actions.
+            for Raspberry Pi OS / Debian 13 (aarch64), built and smoke-tested
+            automatically from upstream source in GitHub Actions.
 
             FreeFileSync is GPLv3 — source code:
             https://freefilesync.org/download/FreeFileSync_${{ env.VERSION }}_Source.zip
 
-            ### Install
+            ### Install (recommended: let the script do it)
+
+                ./build-freefilesync.sh ${{ env.VERSION }}
+
+            ### Manual install
 
                 sudo mkdir -p /opt/freefilesync
                 sudo tar -xzf FreeFileSync-${{ env.VERSION }}-linux-aarch64.tar.gz -C /opt/freefilesync
                 sudo chmod +x /opt/freefilesync/FreeFileSync_aarch64
                 sudo ln -sf /opt/freefilesync/FreeFileSync_aarch64 /usr/local/bin/freefilesync
-
-      - name: Upload as workflow artifact (manual runs)
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v7
-        with:
-          name: FreeFileSync-${{ env.VERSION }}-linux-aarch64
-          path: FreeFileSync-${{ env.VERSION }}-linux-aarch64.tar.gz
