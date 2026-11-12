@@ -1,0 +1,9 @@
+# Build caches (sync them across devices if you like, but don't commit them)
+build-library/
+
+# Lock file created by build-freefilesync.sh
+.build-freefilesync.lock
+
+# Local backups / leftovers
+*.backup*
+__pycache__/
