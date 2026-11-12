@@ -9,7 +9,6 @@
 set -u
 
 TARBALL="${1:?usage: smoke-test.sh <tarball>}"
-INSTALL_DIR="/opt/freefilesync"
 
 echo "== Unpacking ${TARBALL} =="
 rm -rf /opt/freefilesync /opt/Resources
@@ -19,6 +18,27 @@ tar -xzf "$TARBALL" -C /opt/freefilesync
 # binary's directory (binary in /opt/freefilesync, Resources in /opt/Resources),
 # which is exactly the layout the build script's install step uses.
 mv /opt/freefilesync/Resources /opt/Resources
+
+# Layout assertion: the resource files must sit where the app expects them.
+# (Note: do NOT use Animal.dat here — that file is a Donation-Edition asset
+# and is intentionally absent from open-source builds; its "Failed to load"
+# message is a known, harmless upstream quirk.)
+LAYOUT_OK=true
+for RESOURCE_FILE in Icons.zip Languages.zip Gtk3Styles.css cacert.pem; do
+  if [ ! -f "/opt/Resources/${RESOURCE_FILE}" ]; then
+    echo "FAIL: expected resource missing at /opt/Resources/${RESOURCE_FILE}"
+    LAYOUT_OK=false
+  fi
+done
+if [ ! -x "/opt/freefilesync/FreeFileSync_aarch64" ]; then
+  echo "FAIL: binary not found or not executable at /opt/freefilesync/FreeFileSync_aarch64"
+  LAYOUT_OK=false
+fi
+if [ "$LAYOUT_OK" = false ]; then
+  echo "FAIL: install layout does not match what FreeFileSync expects"
+  exit 1
+fi
+echo "✓ Layout check passed: binary in /opt/freefilesync, Resources in /opt/Resources"
 
 echo "== Launching FreeFileSync under Xvfb on a clean system =="
 xvfb-run -a --server-args="-screen 0 1280x1024x24" bash -c '
