@@ -99,6 +99,20 @@ jobs:
       - name: Build FreeFileSync ${{ env.VERSION }}
         run: ./build-freefilesync.sh "${VERSION}" --no-install --no-prebuilt
 
+      # GPLv3 compliance: the release must ship the patchset the binaries
+      # were built from. The script records it into the build-library cache.
+      - name: Extract patchset evidence
+        run: |
+          PATCHSET="build-library/aarch64-debian-13/patches/FreeFileSync-${VERSION}-rpi-patches-*.diff"
+          ls -la build-library/aarch64-debian-13/patches/
+          # shellcheck disable=SC2206
+          PATCH_FILES=(${PATCHSET})
+          if [ ! -s "${PATCH_FILES[0]}" ]; then
+            echo "Patchset diff not found — GPLv3 requires binaries to ship with their corresponding source" >&2
+            exit 1
+          fi
+          cp "${PATCH_FILES[0]}" "FreeFileSync-${VERSION}-rpi-patches.diff"
+
       - name: Package build
         run: |
           CACHE_DIR="build-library/aarch64-debian-13/freefilesync/${VERSION}"
@@ -111,11 +125,13 @@ jobs:
             --transform 's|^bin/||' \
             -C "$CACHE_DIR" bin Resources
 
-      - name: Upload build artifact
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
           name: FreeFileSync-${{ env.VERSION }}-linux-aarch64
-          path: FreeFileSync-${{ env.VERSION }}-linux-aarch64.tar.gz
+          path: |
+            FreeFileSync-${{ env.VERSION }}-linux-aarch64.tar.gz
+            FreeFileSync-${{ env.VERSION }}-rpi-patches.diff
 
   smoke-test:
     name: Smoke test on clean Debian 13
@@ -179,14 +195,22 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ env.VERSION }}
-          files: dist/FreeFileSync-${{ env.VERSION }}-linux-aarch64.tar.gz
+          files: |
+            dist/FreeFileSync-${{ env.VERSION }}-linux-aarch64.tar.gz
+            dist/FreeFileSync-${{ env.VERSION }}-rpi-patches.diff
           body: |
             Prebuilt [FreeFileSync](https://freefilesync.org) ${{ env.VERSION }}
             for Raspberry Pi OS / Debian 13 (aarch64), built and smoke-tested
             automatically from upstream source in GitHub Actions.
 
-            FreeFileSync is GPLv3 — source code:
-            https://freefilesync.org/download/FreeFileSync_${{ env.VERSION }}_Source.zip
+            FreeFileSync is GPLv3. The binaries are built from upstream source
+            **plus the patchset attached below** (`-rpi-patches.diff`; it
+            contains the minimal changes needed to build on Debian 13/aarch64).
+            Complete corresponding source = the upstream source ZIP
+            (https://freefilesync.org/download/FreeFileSync_${{ env.VERSION }}_Source.zip)
+            with that patchset applied (`patch -p1`).
+
+            Statically linked third-party libraries: libssh2, curl, OpenSSL.
 
             ### Install (recommended: let the script do it)
 

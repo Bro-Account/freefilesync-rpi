@@ -100,7 +100,16 @@ visual proof. Releases are published only after this test passes.
 
 ## Notes
 
-- FreeFileSync is GPLv3; these builds are compiled from unmodified upstream
-  source. This repository's script itself is MIT licensed.
+- FreeFileSync is GPLv3. These builds are compiled from upstream source
+  **plus a small patchset** — the minimal changes needed to build on
+  Debian 13 / aarch64, applied automatically by the script. For GPLv3
+  "complete corresponding source" compliance, the script records the exact
+  patchset as a diff, and CI attaches it to each release
+  (`FreeFileSync-<version>-rpi-patches.diff`; corresponding source =
+  upstream source ZIP with that diff applied via `patch -p1`).
+- This repository's script itself is MIT licensed. Statically linked
+  third-party libraries (libssh2, curl, OpenSSL) keep their own
+  licenses and are unmodified except for the libssh2 compatibility
+  patch included in the patchset.
 - To rebuild a cached dependency on a normal machine, delete it from
   `build-library/`, e.g. `rm -rf build-library/aarch64-debian-13/curl/8.23.0`.

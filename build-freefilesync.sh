@@ -277,7 +277,7 @@ DEPS_FILE="${FFS_CACHE_DIR}/.deps"
 # Increase PATCHSET_REVISION whenever one of the FreeFileSync source patches
 # below is added, removed, or materially changed.
 CACHE_FORMAT="4"
-PATCHSET_REVISION="14.13-rpi-compat-4"
+PATCHSET_REVISION="14.13-rpi-compat-5"
 
 CURRENT_DEPS="cacheFormat=${CACHE_FORMAT},patchset=${PATCHSET_REVISION},arch=${ARCH},os=${OS_CACHE_ID},libssh2=${LIBSSH2_VERSION},curl=${CURL_VERSION},wxWidgets=${WXWIDGETS_VERSION}"
 
@@ -1025,6 +1025,31 @@ for name in sys.argv[1:]:
         sys.exit(f"Error: expected directive not found in {path}; refusing to guess")
 PY
   fi
+
+  # Record the applied patchset. GPLv3 requires distributed binaries to come
+  # with their complete corresponding source — for these builds that is the
+  # pristine upstream source ZIP plus this diff. Stored in the build-library
+  # cache so CI can attach it to the release (also on cache-hit re-runs).
+  PATCHSET_DIR="${BUILD_LIBRARY}/patches"
+  PATCHSET_FILE="${PATCHSET_DIR}/FreeFileSync-${VERSION}-rpi-patches-${PATCHSET_REVISION}.diff"
+  echo "Recording patchset (pristine upstream source vs patched tree)..."
+  PATCH_PARENT="$(mktemp -d)"
+  unzip -qo "$ZIP_NAME" -d "${PATCH_PARENT}/${EXTRACT_DIR}" || {
+    echo "Failed to extract pristine source for the patchset diff"; exit 1;
+  }
+  mkdir -p "$PATCHSET_DIR"
+  (
+    cd "$PATCH_PARENT" &&
+    diff -ruN "${EXTRACT_DIR}" "${OLDPWD}/${EXTRACT_DIR}" > "${OLDPWD}/${PATCHSET_FILE}"
+  )
+  # diff exits 1 when differences exist, which is the expected case here.
+  if [ -s "$PATCHSET_FILE" ]; then
+    echo "  - Patchset recorded: ${PATCHSET_FILE} ($(du -h "$PATCHSET_FILE" | cut -f1))"
+  else
+    echo "Error: patchset diff is empty; refusing to continue without license-relevant evidence"
+    exit 1
+  fi
+  rm -rf "$PATCH_PARENT"
 
   # Now compile FreeFileSync
   cd "$FFS_SOURCE_DIR" || exit 1
