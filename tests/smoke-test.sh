@@ -12,8 +12,13 @@ TARBALL="${1:?usage: smoke-test.sh <tarball>}"
 INSTALL_DIR="/opt/freefilesync"
 
 echo "== Unpacking ${TARBALL} =="
-mkdir -p "$INSTALL_DIR"
-tar -xzf "$TARBALL" -C "$INSTALL_DIR"
+rm -rf /opt/freefilesync /opt/Resources
+mkdir -p /opt/freefilesync
+tar -xzf "$TARBALL" -C /opt/freefilesync
+# FreeFileSync looks for its Resources directory one level ABOVE the
+# binary's directory (binary in /opt/freefilesync, Resources in /opt/Resources),
+# which is exactly the layout the build script's install step uses.
+mv /opt/freefilesync/Resources /opt/Resources
 
 echo "== Launching FreeFileSync under Xvfb on a clean system =="
 xvfb-run -a --server-args="-screen 0 1280x1024x24" bash -c '

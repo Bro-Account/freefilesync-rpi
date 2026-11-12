@@ -196,5 +196,6 @@ jobs:
 
                 sudo mkdir -p /opt/freefilesync
                 sudo tar -xzf FreeFileSync-${{ env.VERSION }}-linux-aarch64.tar.gz -C /opt/freefilesync
+                sudo mv /opt/freefilesync/Resources /opt/Resources
                 sudo chmod +x /opt/freefilesync/FreeFileSync_aarch64
                 sudo ln -sf /opt/freefilesync/FreeFileSync_aarch64 /usr/local/bin/freefilesync

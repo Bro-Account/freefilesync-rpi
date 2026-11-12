@@ -64,11 +64,13 @@ The released binary links **libssh2 and curl statically** (and wxWidgets was
 already static), so it runs on a stock Raspberry Pi OS installation — only
 standard Debian runtime packages are needed (gtk3, libssl, libpsl, libidn2,
 libjpeg), which the script installs automatically. Hand-installation of a
-release tarball:
+release tarball (note that FreeFileSync expects `Resources/` one level above
+the binary's directory):
 
 ```sh
 sudo mkdir -p /opt/freefilesync
 sudo tar -xzf FreeFileSync-<version>-linux-aarch64.tar.gz -C /opt/freefilesync
+sudo mv /opt/freefilesync/Resources /opt/Resources
 sudo chmod +x /opt/freefilesync/FreeFileSync_aarch64
 sudo ln -sf /opt/freefilesync/FreeFileSync_aarch64 /usr/local/bin/freefilesync
 ```
