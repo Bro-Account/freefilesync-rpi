@@ -90,7 +90,7 @@ jobs:
       # FreeFileSync builds persist between runs. The key includes the script
       # hash so dependency changes invalidate the cache.
       - name: Restore build cache
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: build-library
           key: ffs-build-${{ hashFiles('build-freefilesync.sh') }}
@@ -111,6 +111,16 @@ jobs:
             exit 1
           fi
           cp "$PATCH_FILE" "FreeFileSync-${VERSION}-rpi-patches.diff"
+
+      # Save even when a later step failed: the expensive build result must
+      # not be lost just because e.g. the packaging step had a bug.
+      - name: Save build cache
+        if: always()
+        uses: actions/cache/save@v6
+        continue-on-error: true
+        with:
+          path: build-library
+          key: ffs-build-${{ hashFiles('build-freefilesync.sh') }}
 
       - name: Package build
         run: |

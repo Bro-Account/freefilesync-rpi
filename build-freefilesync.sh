@@ -137,30 +137,37 @@ download_and_validate() {
 
   rm -f "$temp_archive"
 
-  echo "Downloading ${description}..."
-
-  wget \
-    --https-only \
-    --timeout=30 \
-    --tries=3 \
-    --waitretry=2 \
-    --output-document="$temp_archive" \
-    "$url" || {
-      rm -f "$temp_archive"
-      echo "Failed to download ${description}"
-      return 1
-    }
-
-  if ! "$validator" "$temp_archive"; then
-    echo "Downloaded ${description} is not a valid archive."
-    echo "Downloaded size: $(wc -c < "$temp_archive") bytes"
+  # The upstream server occasionally serves an error/download page instead
+  # of the archive (a successful HTTP response, so wget's own retries don't
+  # help). Retry at the application level, with a growing pause.
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    echo "Downloading ${description} (attempt ${attempt}/5)..."
+    if wget \
+        --https-only \
+        --timeout=30 \
+        --tries=3 \
+        --waitretry=2 \
+        --output-document="$temp_archive" \
+        "$url"; then
+      if "$validator" "$temp_archive"; then
+        mv -f "$temp_archive" "$archive"
+        echo "✓ Downloaded and validated ${description}"
+        return 0
+      fi
+      echo "⚠ Downloaded ${description} is not a valid archive (size: $(wc -c < "$temp_archive") bytes)."
+      echo "  The server sometimes serves an HTML page instead of the archive; pausing before retry."
+    else
+      echo "⚠ Network error while downloading ${description}."
+    fi
     rm -f "$temp_archive"
-    return 1
-  fi
+    if [ "$attempt" -lt 5 ]; then
+      sleep $((attempt * 30))
+    fi
+  done
 
-  mv -f "$temp_archive" "$archive"
-
-  echo "✓ Downloaded and validated ${description}"
+  echo "Failed to download a valid ${description} after 5 attempts"
+  return 1
 }
 
 # Parse options
