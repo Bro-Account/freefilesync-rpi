@@ -103,15 +103,14 @@ jobs:
       # were built from. The script records it into the build-library cache.
       - name: Extract patchset evidence
         run: |
-          PATCHSET="build-library/aarch64-debian-13/patches/FreeFileSync-${VERSION}-rpi-patches-*.diff"
           ls -la build-library/aarch64-debian-13/patches/
-          # shellcheck disable=SC2206
-          PATCH_FILES=(${PATCHSET})
-          if [ ! -s "${PATCH_FILES[0]}" ]; then
+          PATCH_FILE="$(find build-library/aarch64-debian-13/patches \
+            -name "FreeFileSync-${VERSION}-rpi-patches-*.diff" | head -n1)"
+          if [ -z "$PATCH_FILE" ] || [ ! -s "$PATCH_FILE" ]; then
             echo "Patchset diff not found — GPLv3 requires binaries to ship with their corresponding source" >&2
             exit 1
           fi
-          cp "${PATCH_FILES[0]}" "FreeFileSync-${VERSION}-rpi-patches.diff"
+          cp "$PATCH_FILE" "FreeFileSync-${VERSION}-rpi-patches.diff"
 
       - name: Package build
         run: |
